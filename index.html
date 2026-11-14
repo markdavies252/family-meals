@@ -13,6 +13,11 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js"></script>
 
+  <!-- Firebase Classic SDKs (Instant loading, no module syntax or timing conflicts) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
   <style>
     /* Custom scrollbars */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -548,6 +553,7 @@
       const [mealToAssign, setMealToAssign] = useState(null);
       const [syncStatus, setSyncStatus] = useState('Local Mode');
       const [showFirebaseModal, setShowFirebaseModal] = useState(false);
+      const [firebaseModalMsg, setFirebaseModalMsg] = useState('');
       const [firebaseConfigInput, setFirebaseConfigInput] = useState(() => {
         try {
           return localStorage.getItem('family_firebase_config_raw') || '';
@@ -638,67 +644,103 @@
 
       // Dynamic Firebase Live Sync Connection
       useEffect(() => {
-        if (!firebaseConfigInput.trim() || !window.FirebaseSDK) return;
+        const raw = firebaseConfigInput.trim();
+        if (!raw || typeof firebase === 'undefined') return;
+
+        let parsedConfig = null;
+        try {
+          // Robust parser: accepts raw JSON or "const firebaseConfig = { ... };"
+          if (raw.startsWith('{') && raw.endsWith('}')) {
+            // Standard JSON or relaxed JS object
+            parsedConfig = (new Function(`return ${raw}`))();
+          } else {
+            const match = raw.match(/\{[\s\S]*\}/);
+            if (match) {
+              parsedConfig = (new Function(`return ${match[0]}`))();
+            }
+          }
+        } catch (err) {
+          setSyncStatus('Config Format Error');
+          setFirebaseModalMsg('Could not read config. Make sure the brackets { ... } are included.');
+          return;
+        }
+
+        if (!parsedConfig || !parsedConfig.projectId) {
+          setSyncStatus('Missing Project ID');
+          setFirebaseModalMsg('Config is missing projectId.');
+          return;
+        }
 
         let unsubscribe = () => {};
         try {
-          let config = null;
-          const cleaned = firebaseConfigInput.trim();
-          if (cleaned.startsWith('{')) {
-            config = JSON.parse(cleaned);
-          } else {
-            // Attempt to extract JSON inside "const firebaseConfig = { ... };"
-            const match = cleaned.match(/\{[\s\S]*\}/);
-            if (match) config = JSON.parse(match[0].replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":').replace(/'/g, '"'));
+          // Initialize Firebase app if not already initialized
+          let app;
+          try {
+            app = firebase.app('family-app');
+          } catch (e) {
+            app = firebase.initializeApp(parsedConfig, 'family-app');
           }
 
-          if (config && config.projectId) {
-            const { initializeApp, getAuth, signInAnonymously, getFirestore, doc, onSnapshot, setDoc } = window.FirebaseSDK;
-            const app = initializeApp(config, 'family-app-' + Date.now());
-            const auth = getAuth(app);
-            const db = getFirestore(app);
+          const auth = app.auth();
+          const db = app.firestore();
 
-            signInAnonymously(auth).then(() => {
-              setSyncStatus('Connecting Cloud...');
-              const docRef = doc(db, 'artifacts', config.projectId, 'public', 'data', 'family_meals_data');
-              
-              unsubscribe = onSnapshot(docRef, (snap) => {
-                if (snap.exists()) {
-                  const data = snap.data();
-                  if (data.multiWeekPlans) setMultiWeekPlans(data.multiWeekPlans);
-                  if (data.favorites) setFavorites(data.favorites);
-                  if (data.checkedGroceries) setCheckedGroceries(data.checkedGroceries);
-                  setSyncStatus('Live Sync Active 🟢');
-                } else {
-                  // Initialize remote document with current local plan
-                  setDoc(docRef, {
-                    multiWeekPlans,
-                    favorites,
-                    checkedGroceries,
-                    updatedAt: new Date().toISOString()
-                  }, { merge: true });
-                  setSyncStatus('Live Sync Active 🟢');
-                }
-              }, (err) => {
-                console.error(err);
-                setSyncStatus('Sync Error (Check Rules)');
-              });
+          setSyncStatus('Connecting Cloud...');
 
-              // Store globally to enable save pushing
-              window.activeFirestorePush = (plans, favs, groc) => {
-                setDoc(docRef, {
-                  multiWeekPlans: plans,
-                  favorites: favs,
-                  checkedGroceries: groc,
+          // Connect anonymously or sign in
+          const connectFirestore = () => {
+            const docRef = db.collection('artifacts').doc(parsedConfig.projectId)
+              .collection('public').doc('data')
+              .collection('family_meals_data').doc('current');
+
+            unsubscribe = docRef.onSnapshot((snap) => {
+              if (snap.exists) {
+                const data = snap.data();
+                if (data.multiWeekPlans) setMultiWeekPlans(data.multiWeekPlans);
+                if (data.favorites) setFavorites(data.favorites);
+                if (data.checkedGroceries) setCheckedGroceries(data.checkedGroceries);
+                setSyncStatus('Live Sync Active 🟢');
+                setFirebaseModalMsg('Connected! Live sync is active.');
+              } else {
+                // Initialize first remote record
+                docRef.set({
+                  multiWeekPlans,
+                  favorites,
+                  checkedGroceries,
                   updatedAt: new Date().toISOString()
-                }, { merge: true }).catch(() => {});
-              };
-            }).catch(() => {
-              setSyncStatus('Auth Failed');
+                }, { merge: true });
+                setSyncStatus('Live Sync Active 🟢');
+                setFirebaseModalMsg('Connected! Created shared cloud database.');
+              }
+            }, (error) => {
+              console.error("Firestore snapshot error:", error);
+              setSyncStatus('Permission Denied ⚠️');
+              setFirebaseModalMsg('Permission denied: In Firebase Console -> Firestore -> Rules, set "allow read, write: if true;"');
             });
-          }
+
+            // Store push function globally
+            window.activeFirestorePush = (plans, favs, groc) => {
+              docRef.set({
+                multiWeekPlans: plans,
+                favorites: favs,
+                checkedGroceries: groc,
+                updatedAt: new Date().toISOString()
+              }, { merge: true }).catch(err => console.error("Cloud push failed:", err));
+            };
+          };
+
+          // Try signing in anonymously if auth is enabled, otherwise proceed directly
+          auth.signInAnonymously()
+            .then(() => connectFirestore())
+            .catch((authErr) => {
+              console.warn("Anonymous auth failed, trying direct Firestore:", authErr);
+              // Some setups don't have anonymous auth enabled; try Firestore directly
+              connectFirestore();
+            });
+
         } catch (e) {
-          console.warn("Firebase parse warning:", e);
+          console.error("Firebase setup error:", e);
+          setSyncStatus('Sync Error');
+          setFirebaseModalMsg(e.message || 'Firebase initialisation error');
         }
 
         return () => unsubscribe();
@@ -1740,23 +1782,36 @@
                 </div>
 
                 <p className="text-xs text-stone-600 leading-relaxed">
-                  To sync changes live between you and your wife, paste your free Firebase config JSON below:
+                  To sync changes live between you and your wife, paste your Firebase config snippet below:
                 </p>
 
                 <textarea
                   rows={6}
                   value={firebaseConfigInput}
-                  onChange={(e) => setFirebaseConfigInput(e.target.value)}
-                  placeholder={`{\n  "apiKey": "AIzaSy...",\n  "authDomain": "...",\n  "projectId": "..."\n}`}
+                  onChange={(e) => {
+                    setFirebaseConfigInput(e.target.value);
+                    setFirebaseModalMsg('');
+                  }}
+                  placeholder={`const firebaseConfig = {\n  apiKey: "AIzaSy...",\n  authDomain: "...",\n  projectId: "..."\n};`}
                   className="w-full text-xs font-mono p-2.5 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
+
+                {firebaseModalMsg && (
+                  <div className={`p-2.5 rounded-lg text-xs ${
+                    firebaseModalMsg.includes('Connected')
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-amber-50 text-amber-900 border border-amber-200'
+                  }`}>
+                    {firebaseModalMsg}
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between pt-2">
                   <button
                     onClick={() => {
                       try {
                         localStorage.setItem('family_firebase_config_raw', firebaseConfigInput);
-                        setShowFirebaseModal(false);
+                        setFirebaseModalMsg('Saving & checking connection...');
                       } catch (e) {}
                     }}
                     className="w-full py-2 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition"
