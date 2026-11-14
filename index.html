@@ -1,0 +1,1897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Family Table - Meal Planner & BBC Discovery</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & Babel for zero-build running in any browser -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase 11 Modular CDN SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    window.FirebaseSDK = {
+      initializeApp,
+      getAuth,
+      signInAnonymously,
+      getFirestore,
+      doc,
+      setDoc,
+      onSnapshot
+    };
+  </script>
+
+  <!-- Lucide Icons standalone bundle -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f5f5f4; }
+    ::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-800 antialiased selection:bg-amber-200">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    // --- Verified Inline SVG Icon Helper for Lucide Aesthetics ---
+    const Icon = ({ name, className = "w-4 h-4", ...props }) => {
+      const icons = {
+        calendar: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+        ),
+        utensils: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="M18 2v6a3 3 0 0 1-3 3 3 3 0 0 1-3-3V2"></path>
+            <path d="M15 2v19"></path>
+            <path d="M5 2v7a3 3 0 0 0 3 3h0a3 3 0 0 0 3-3V2"></path>
+            <path d="M8 2v19"></path>
+          </svg>
+        ),
+        sparkles: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"></path>
+          </svg>
+        ),
+        cart: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <circle cx="8" cy="21" r="1"></circle>
+            <circle cx="19" cy="21" r="1"></circle>
+            <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"></path>
+          </svg>
+        ),
+        plus: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        ),
+        check: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        ),
+        trash: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        ),
+        shuffle: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <polyline points="16 3 21 3 21 8"></polyline>
+            <line x1="4" y1="20" x2="21" y2="3"></line>
+            <polyline points="21 16 21 21 16 21"></polyline>
+            <line x1="15" y1="15" x2="21" y2="21"></line>
+            <line x1="4" y1="4" x2="9" y2="9"></line>
+          </svg>
+        ),
+        clock: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        ),
+        flame: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path>
+          </svg>
+        ),
+        chefHat: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="M6 13.8a4.5 4.5 0 1 1 2.6-6.4 4.5 4.5 0 1 1 6.8 0A4.5 4.5 0 1 1 18 13.8"></path>
+            <path d="M6 14h12v4a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-4z"></path>
+          </svg>
+        ),
+        grip: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <circle cx="9" cy="12" r="1"></circle>
+            <circle cx="9" cy="5" r="1"></circle>
+            <circle cx="9" cy="19" r="1"></circle>
+            <circle cx="15" cy="12" r="1"></circle>
+            <circle cx="15" cy="5" r="1"></circle>
+            <circle cx="15" cy="19" r="1"></circle>
+          </svg>
+        ),
+        close: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        ),
+        chevronLeft: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        ),
+        chevronRight: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        ),
+        copy: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        ),
+        link: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        ),
+        search: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        ),
+        edit: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+          </svg>
+        ),
+        panelOpen: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+            <path d="M15 3v18"></path>
+            <path d="m8 9 3 3-3 3"></path>
+          </svg>
+        ),
+        panelClose: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+            <path d="M15 3v18"></path>
+            <path d="m10 15-3-3 3-3"></path>
+          </svg>
+        ),
+        bookmark: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
+          </svg>
+        ),
+        cloud: (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
+          </svg>
+        )
+      };
+
+      return icons[name] || null;
+    };
+
+    // --- Seed Favorites (User's Exact 10 Dinners) ---
+    const INITIAL_FAVORITES = [
+      {
+        id: 'fav-1',
+        title: 'Vietnamese Meatballs',
+        description: 'Pork mince mixed with fresh mint, coriander, fish sauce, shallots and garlic; served with sweet & tangy nuoc cham, salad and egg fried rice.',
+        protein: 'Pork',
+        tags: ['Asian', 'Family Hit', 'Herbaceous'],
+        prepTime: '35 mins',
+        serves: '4',
+        ingredients: [
+          'Pork mince (500g)',
+          'Fresh mint & fresh coriander',
+          'Shallots (3) & garlic (3 cloves)',
+          'Fish sauce & lime juice',
+          'Nuoc cham dipping ingredients',
+          'Salad leaves & cucumber',
+          'Cooked rice & eggs (for egg fried rice)'
+        ],
+        sides: 'Nuoc cham dip, mixed leaf salad, egg fried rice',
+        source: 'Family Staple'
+      },
+      {
+        id: 'fav-2',
+        title: 'Rich Chorizo Risotto',
+        description: 'Creamy arborio risotto made with homemade roast chicken stock, smoky diced chorizo, onions, garlic, sweetcorn, and sweet garden peas with fresh basil.',
+        protein: 'Pork/Chicken',
+        tags: ['Comfort', 'Stock Base', 'Italian/Spanish'],
+        prepTime: '40 mins',
+        serves: '4',
+        ingredients: [
+          'Smoky chorizo sausage ring (200g)',
+          'Arborio risotto rice (300g)',
+          'Homemade roast chicken stock (1L)',
+          'Brown onion & garlic cloves',
+          'Sweetcorn (tin or frozen)',
+          'Garden peas (frozen)',
+          'Fresh basil leaves & parmesan',
+          'Optional: Chicken in breadcrumbs'
+        ],
+        sides: 'Sometimes served with crispy breadcrumbed chicken',
+        source: 'Family Staple'
+      },
+      {
+        id: 'fav-3',
+        title: 'Classic Spaghetti Bolognese',
+        description: 'Slow-cooked minced beef ragu packed with onion, celery, carrot soffritto, garlic, button mushrooms, fresh basil, and rich Mutti passata over spaghetti.',
+        protein: 'Beef',
+        tags: ['Classic', 'Italian', 'Batch Cook'],
+        prepTime: '50 mins',
+        serves: '4-6',
+        ingredients: [
+          'Beef mince (500g)',
+          'Mutti tomato passata (2 bottles)',
+          'Onion, carrots (2), celery sticks (2)',
+          'Garlic (3 cloves)',
+          'Chestnut mushrooms (200g)',
+          'Fresh basil & dried oregano',
+          'Spaghetti pasta (400g)',
+          'Parmesan cheese'
+        ],
+        sides: 'Spaghetti, grated parmesan, garlic crusty bread',
+        source: 'Family Staple'
+      },
+      {
+        id: 'fav-4',
+        title: 'Pressure Cooker Honey-Mustard Chicken Stew',
+        description: 'Tender chicken thighs simmered in homemade roast chicken stock, onions, carrots, wholegrain mustard and sweet honey; peas added at the end.',
+        protein: 'Chicken',
+        tags: ['Pressure Cooker', 'Comfort', 'Quick Stew'],
+        prepTime: '35 mins',
+        serves: '4',
+        ingredients: [
+          'Boneless skinless chicken thighs (600g)',
+          'Roast chicken stock (600ml)',
+          'Carrots (3 large, sliced)',
+          'Brown onions (2 sliced)',
+          'Wholegrain mustard & honey (2 tbsp each)',
+          'Sweetcorn (sweet tin)',
+          'Petits pois peas',
+          'Potatoes or puff pastry sheet'
+        ],
+        sides: 'Boiled or garlic roast potatoes, or baked with a puff pastry lid',
+        source: 'Family Staple'
+      },
+      {
+        id: 'fav-5',
+        title: 'Crispy Extra Virgin Panko Chicken',
+        description: 'Juicy chicken breasts breaded in crunchy Japanese panko and shallow fried golden in extra virgin olive oil, paired with fluffy garlic roast potatoes.',
+        protein: 'Chicken',
+        tags: ['Quick <30m', 'Crowd-Pleaser', 'Crispy'],
+        prepTime: '30 mins',
+        serves: '4',
+        ingredients: [
+          'Chicken breasts (4 fillets)',
+          'Panko breadcrumbs (150g)',
+          'Eggs (2 beaten) & plain flour',
+          'Extra virgin olive oil (for frying)',
+          'Roasting potatoes (Maris Piper, 1kg)',
+          'Garlic cloves & fresh rosemary/thyme'
+        ],
+        sides: 'Garlic roast potatoes, fresh steamed green beans or salad',
+        source: 'Family Staple'
+      },
+      {
+        id: 'fav-6',
+        title: 'Soy, Garlic & Honey Roast Chicken Thighs',
+        description: 'Oven-roasted chicken thighs glazed in dark soy, garlic, five-spice, cider vinegar, and honey; served with quick-pickled cucumbers and broccoli.',
+        protein: 'Chicken',
+        tags: ['Asian', 'Traybake', 'Family Hit'],
+        prepTime: '40 mins',
+        serves: '4',
+        ingredients: [
+          'Chicken thighs (8 pieces)',
+          'Dark & light soy sauce',
+          'Honey (3 tbsp) & Chinese five spice (1 tsp)',
+          'Garlic cloves (4 minced) & rice vinegar',
+          'Broccoli heads (2)',
+          'Cucumbers (pickled in rice vinegar & sugar)',
+          'Cooked rice & eggs (for egg fried rice)'
+        ],
+        sides: 'Egg fried rice, quick pickled cucumber ribbons, steamed broccoli',
+        source: 'Family Staple'
+      },
+      {
+        id: 'fav-7',
+        title: 'Classic British Sunday Roast Chicken',
+        description: 'Whole roast herb chicken with golden crispy roasties, seasonal steamed greens, sweet roasted carrots, and rich scratch gravy made from pan juices.',
+        protein: 'Chicken',
+        tags: ['Sunday Roast', 'British', 'Showstopper'],
+        prepTime: '1 hr 15 mins',
+        serves: '4-5',
+        ingredients: [
+          'Whole free-range chicken (1.6kg)',
+          'Roasting potatoes (1.2kg)',
+          'Fresh rosemary, thyme & 1 lemon',
+          'Carrots & parsnips',
+          'Green cabbage or tenderstem broccoli',
+          'Chicken stock / gravy granules',
+          'Butter & sea salt'
+        ],
+        sides: 'Crispy roast potatoes, seasonal greens, stuffing, Yorkshire puddings, homemade chicken gravy',
+        source: 'Family Staple'
+      },
+      {
+        id: 'fav-8',
+        title: 'Tender Sweet & Sour Pork',
+        description: 'Lean tenderised pork fillet chunks wok-tossed with crisp red peppers, sweet onions, tangy vinegar, tomato puree, and light soy with rice.',
+        protein: 'Pork',
+        tags: ['Stir-fry', 'Tangy', 'Asian'],
+        prepTime: '30 mins',
+        serves: '4',
+        ingredients: [
+          'Pork tenderloin fillet (500g, sliced)',
+          'Bell peppers (1 red, 1 green/yellow)',
+          'White onion & spring onions',
+          'Garlic & ginger',
+          'Tomato purée & apple cider vinegar',
+          'Brown sugar & cornflour',
+          'Cooked jasmine rice & eggs'
+        ],
+        sides: 'Egg fried rice or steamed sticky jasmine rice',
+        source: 'Family Staple'
+      },
+      {
+        id: 'fav-9',
+        title: 'Middle-Eastern Chicken Shawarma',
+        description: 'Spiced aromatic chicken thighs (cumin, coriander, smoked paprika, garlic, lemon) barbecued or pan-charred, served with griddled peppers & soft flatbreads.',
+        protein: 'Chicken',
+        tags: ['BBQ/Grill', 'Handheld', 'Crowd-Pleaser'],
+        prepTime: '35 mins',
+        serves: '4',
+        ingredients: [
+          'Boneless chicken thighs (700g)',
+          'Shawarma spices (ground cumin, coriander, turmeric, smoked paprika)',
+          'Lemon juice & garlic paste',
+          'Mixed bell peppers (2) & red onion slices',
+          'Soft Lebanese / Greek flatbreads',
+          'Tahini or garlic yoghurt & shredded iceberg'
+        ],
+        sides: 'Warm flatbreads, charred peppers & onions, garlic sauce or toum',
+        source: 'Family Staple'
+      },
+      {
+        id: 'fav-10',
+        title: 'Bistro Steak & Chips',
+        description: 'Prime ribeye or sirloin seared with foaming butter, crushed garlic and fresh thyme, paired with crispy golden chips and vine roasted cherry tomatoes.',
+        protein: 'Beef',
+        tags: ['Quick Luxury', 'Bistro', 'Weekend Special'],
+        prepTime: '25 mins',
+        serves: '4',
+        ingredients: [
+          'Sirloin or Ribeye steaks (4 thick-cut)',
+          'Fluffy potatoes for chips (Maris Piper 1kg)',
+          'Butter, fresh thyme sprigs, garlic cloves',
+          'Peppercorn sauce ingredients (cream, crushed peppercorns, splash of beef stock)',
+          'Vine cherry tomatoes or rocket salad'
+        ],
+        sides: 'Crispy skin-on chips, dressed rocket salad, green peppercorn sauce',
+        source: 'Family Staple'
+      }
+    ];
+
+    // --- Curated BBC Food Matches ---
+    const BBC_FOOD_SUGGESTIONS = [
+      {
+        id: 'bbc-1',
+        title: 'Sticky Five-Spice Pork Belly Bao & Bowls',
+        bbcChef: 'BBC Good Food',
+        matchReason: 'Matches your Vietnamese meatballs & soy-honey pork profile with warm five-spice, ginger and fresh aromatics.',
+        cookTime: '35 mins',
+        protein: 'Pork',
+        tags: ['Asian', 'Quick Pickles', 'Weeknight Hit'],
+        bbcUrl: 'https://www.bbcgoodfood.com/recipes/five-spice-pork-belly',
+        ingredients: [
+          'Pork tenderloin or pork belly slices (500g)',
+          'Chinese five-spice (1 tbsp)',
+          'Fresh ginger (grated), garlic (3 cloves)',
+          'Soy sauce, honey & rice wine vinegar',
+          'Spring onions & cucumber ribbons',
+          'Steamed rice or fluffy bao buns'
+        ],
+        instructionsSnippet: 'Sear seasoned pork in five-spice until fragrant, reduce glaze with honey, soy and vinegar, spoon over fluffy rice with pickled cucumbers.'
+      },
+      {
+        id: 'bbc-2',
+        title: 'Spanish Chicken, Chorizo & Butterbean Traybake',
+        bbcChef: 'Diana Henry / BBC Good Food',
+        matchReason: 'Uses your beloved smoky chorizo and roast chicken flavours into a hands-off 35-minute oven traybake.',
+        cookTime: '40 mins',
+        protein: 'Chicken/Pork',
+        tags: ['Traybake', 'Comfort', 'Chorizo Lover'],
+        bbcUrl: 'https://www.bbcgoodfood.com/recipes/spanish-chicken-chorizo-traybake',
+        ingredients: [
+          'Chicken thighs bone-in or boneless (6 pieces)',
+          'Cured chorizo ring (sliced thick, 150g)',
+          'Butter beans or cannellini beans (1 tin, drained)',
+          'Sweet smoked paprika & fresh rosemary',
+          'Cherry tomatoes on vine (250g)',
+          'Red onion wedges & crusty bread to dip'
+        ],
+        instructionsSnippet: 'Toss chicken thighs with sliced chorizo, beans, paprika and tomatoes in a roasting tin. Roast at 200°C for 35 mins until juices run rich and red.'
+      },
+      {
+        id: 'bbc-3',
+        title: 'Slow-Simmered Beef Shin Ragu with Pappardelle',
+        bbcChef: 'BBC Good Food Kitchen',
+        matchReason: 'An elevated, unctuous sibling to your Mutti passata spaghetti bolognese for cosy weekends.',
+        cookTime: '50 mins (or pressure cook in 35)',
+        protein: 'Beef',
+        tags: ['Italian', 'Comfort', 'Weekend Feast'],
+        bbcUrl: 'https://www.bbcgoodfood.com/recipes/beef-shin-ragu',
+        ingredients: [
+          'Diced beef shin or braising steak (600g)',
+          'Mutti passata or whole peeled plum tomatoes (2 tins)',
+          'Carrot, celery, red onion finely diced',
+          'Garlic, tomato purée & splash of red wine or beef stock',
+          'Pappardelle or tagliatelle (400g)',
+          'Fresh parmesan cheese & bay leaves'
+        ],
+        instructionsSnippet: 'Brown beef deeply, sweat mirepoix vegetables, add passata and herbs. Simmer gently until fork-tender and shredded through broad ribbons of pasta.'
+      },
+      {
+        id: 'bbc-4',
+        title: 'Thai Minced Chicken Larb with Mint & Lettuce Cups',
+        bbcChef: 'Rick Stein / BBC Good Food',
+        matchReason: 'Direct match for your Vietnamese meatball love: fresh mint, coriander, lime, shallots and fish sauce.',
+        cookTime: '20 mins',
+        protein: 'Chicken',
+        tags: ['Asian', 'Ultra-Fast <25m', 'Fresh & Zesty'],
+        bbcUrl: 'https://www.bbcgoodfood.com/recipes/thai-chicken-salad-larb',
+        ingredients: [
+          'Chicken breast mince or finely chopped thighs (500g)',
+          'Fresh mint leaves & fresh coriander (large handfuls)',
+          'Banana shallots (3 sliced fine)',
+          'Fish sauce (2 tbsp) & lime juice (2 limes)',
+          'Chilli flakes / sweet chilli (to taste)',
+          'Gem lettuce cups & sticky or jasmine rice'
+        ],
+        instructionsSnippet: 'Stir-fry chicken in a dry wok until cooked through; remove from heat and toss with plenty of lime juice, fish sauce, shallots, torn mint and coriander.'
+      },
+      {
+        id: 'bbc-5',
+        title: 'Crispy Katsu Chicken Curry with Steamed Rice',
+        bbcChef: 'BBC Good Food Team',
+        matchReason: 'Combines your panko breadcrumb chicken method with a mild, sweet family-friendly curry sauce.',
+        cookTime: '35 mins',
+        protein: 'Chicken',
+        tags: ['Asian', 'Crispy Panko', 'Family Favorite'],
+        bbcUrl: 'https://www.bbcgoodfood.com/recipes/chicken-katsu-curry',
+        ingredients: [
+          'Chicken breasts (4 pounded flat)',
+          'Panko breadcrumbs, flour & egg wash',
+          'Onion, carrot & garlic (blended for sauce)',
+          'Mild curry powder (1 tbsp) & honey (1 tsp)',
+          'Chicken stock (400ml) & splash of soy',
+          'Short-grain or jasmine rice'
+        ],
+        instructionsSnippet: 'Simmer blended onion and carrot curry sauce with chicken stock. Fry panko chicken till extra crunchy, slice into strips and drape over rice and sauce.'
+      },
+      {
+        id: 'bbc-6',
+        title: 'Greek Lemon & Oregano Chicken Souvlaki Flatbreads',
+        bbcChef: 'BBC Good Food',
+        matchReason: 'Perfect twin for your chicken shawarma: warm flatbreads, charred marinades, and fresh sides.',
+        cookTime: '30 mins',
+        protein: 'Chicken',
+        tags: ['BBQ/Grill', 'Mediterranean', 'Handheld'],
+        bbcUrl: 'https://www.bbcgoodfood.com/recipes/chicken-souvlaki',
+        ingredients: [
+          'Diced chicken breast or thighs (600g)',
+          'Dried wild oregano & 1 lemon (zest & juice)',
+          'Garlic cloves (3 crushed) & olive oil',
+          'Greek yoghurt, grated cucumber & garlic for tzatziki',
+          'Fluffy Greek pita flatbreads',
+          'Vine tomatoes and red onion slices'
+        ],
+        instructionsSnippet: 'Skewer marinated lemon-oregano chicken and grill or griddle until smoky. Wrap into griddled warm flatbreads with cool garlic-cucumber tzatziki.'
+      }
+    ];
+
+    const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    const getMondayOfWeek = (offsetWeeks = 0) => {
+      const now = new Date();
+      const day = now.getDay();
+      const diffToMonday = day === 0 ? -6 : 1 - day;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday + (offsetWeeks * 7));
+      monday.setHours(0, 0, 0, 0);
+      return monday;
+    };
+
+    const toWeekKey = (dateObj) => {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      return `week-${y}-${m}-${d}`;
+    };
+
+    const createEmptyWeek = () => ({
+      Monday: { mealId: null, customTitle: '', notes: '', cook: 'Husband' },
+      Tuesday: { mealId: null, customTitle: '', notes: '', cook: 'Wife' },
+      Wednesday: { mealId: null, customTitle: '', notes: '', cook: 'Husband' },
+      Thursday: { mealId: null, customTitle: '', notes: '', cook: 'Wife' },
+      Friday: { mealId: null, customTitle: '', notes: '', cook: 'Husband' },
+      Saturday: { mealId: null, customTitle: '', notes: '', cook: 'Together' },
+      Sunday: { mealId: null, customTitle: '', notes: '', cook: 'Family' },
+    });
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('planner');
+      const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+      const [drawerCategory, setDrawerCategory] = useState('staples');
+      const [drawerSearch, setDrawerSearch] = useState('');
+      const [draggedMeal, setDraggedMeal] = useState(null);
+      const [dragOverDay, setDragOverDay] = useState(null);
+      const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
+      const [mealToAssign, setMealToAssign] = useState(null);
+      const [syncStatus, setSyncStatus] = useState('Local Mode');
+      const [showFirebaseModal, setShowFirebaseModal] = useState(false);
+      const [firebaseConfigInput, setFirebaseConfigInput] = useState(() => {
+        try {
+          return localStorage.getItem('family_firebase_config_raw') || '';
+        } catch (e) {
+          return '';
+        }
+      });
+
+      // Local persistence storage
+      const [favorites, setFavorites] = useState(() => {
+        try {
+          const stored = localStorage.getItem('family_favorites_list');
+          if (stored) return JSON.parse(stored);
+        } catch (e) {}
+        return INITIAL_FAVORITES;
+      });
+
+      const [multiWeekPlans, setMultiWeekPlans] = useState(() => {
+        try {
+          const stored = localStorage.getItem('family_multi_week_plans_v1');
+          if (stored) return JSON.parse(stored);
+        } catch (e) {}
+        const defaultKey = toWeekKey(getMondayOfWeek(0));
+        return { [defaultKey]: createEmptyWeek() };
+      });
+
+      const [checkedGroceries, setCheckedGroceries] = useState(() => {
+        try {
+          const stored = localStorage.getItem('family_groceries_checked');
+          if (stored) return JSON.parse(stored);
+        } catch (e) {}
+        return {};
+      });
+
+      const [searchQuery, setSearchQuery] = useState('');
+      const [proteinFilter, setProteinFilter] = useState('All');
+      const [selectedDayForModal, setSelectedDayForModal] = useState(null);
+      const [customMealFormOpen, setCustomMealFormOpen] = useState(false);
+      const [copiedNotification, setCopiedNotification] = useState(false);
+
+      const activeMondayDate = useMemo(() => getMondayOfWeek(selectedWeekOffset), [selectedWeekOffset]);
+      const activeWeekKey = useMemo(() => toWeekKey(activeMondayDate), [activeMondayDate]);
+
+      const activeSundayDate = useMemo(() => {
+        const sun = new Date(activeMondayDate);
+        sun.setDate(activeMondayDate.getDate() + 6);
+        return sun;
+      }, [activeMondayDate]);
+
+      const formattedWeekLabel = useMemo(() => {
+        const startStr = activeMondayDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        const endStr = activeSundayDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        return `${startStr} – ${endStr}`;
+      }, [activeMondayDate, activeSundayDate]);
+
+      const dayCalendarDates = useMemo(() => {
+        const dates = {};
+        DAYS_OF_WEEK.forEach((day, index) => {
+          const d = new Date(activeMondayDate);
+          d.setDate(activeMondayDate.getDate() + index);
+          dates[day] = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        });
+        return dates;
+      }, [activeMondayDate]);
+
+      const currentWeeklyPlan = useMemo(() => {
+        return multiWeekPlans[activeWeekKey] || createEmptyWeek();
+      }, [multiWeekPlans, activeWeekKey]);
+
+      const [newMeal, setNewMeal] = useState({
+        title: '',
+        protein: 'Chicken',
+        prepTime: '30 mins',
+        serves: '4',
+        tags: 'Quick, Family',
+        ingredients: '',
+        sides: '',
+        description: ''
+      });
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('family_favorites_list', JSON.stringify(favorites));
+          localStorage.setItem('family_multi_week_plans_v1', JSON.stringify(multiWeekPlans));
+          localStorage.setItem('family_groceries_checked', JSON.stringify(checkedGroceries));
+        } catch (e) {}
+      }, [favorites, multiWeekPlans, checkedGroceries]);
+
+      // Dynamic Firebase Live Sync Connection
+      useEffect(() => {
+        if (!firebaseConfigInput.trim() || !window.FirebaseSDK) return;
+
+        let unsubscribe = () => {};
+        try {
+          let config = null;
+          const cleaned = firebaseConfigInput.trim();
+          if (cleaned.startsWith('{')) {
+            config = JSON.parse(cleaned);
+          } else {
+            // Attempt to extract JSON inside "const firebaseConfig = { ... };"
+            const match = cleaned.match(/\{[\s\S]*\}/);
+            if (match) config = JSON.parse(match[0].replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":').replace(/'/g, '"'));
+          }
+
+          if (config && config.projectId) {
+            const { initializeApp, getAuth, signInAnonymously, getFirestore, doc, onSnapshot, setDoc } = window.FirebaseSDK;
+            const app = initializeApp(config, 'family-app-' + Date.now());
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+
+            signInAnonymously(auth).then(() => {
+              setSyncStatus('Connecting Cloud...');
+              const docRef = doc(db, 'artifacts', config.projectId, 'public', 'data', 'family_meals_data');
+              
+              unsubscribe = onSnapshot(docRef, (snap) => {
+                if (snap.exists()) {
+                  const data = snap.data();
+                  if (data.multiWeekPlans) setMultiWeekPlans(data.multiWeekPlans);
+                  if (data.favorites) setFavorites(data.favorites);
+                  if (data.checkedGroceries) setCheckedGroceries(data.checkedGroceries);
+                  setSyncStatus('Live Sync Active 🟢');
+                } else {
+                  // Initialize remote document with current local plan
+                  setDoc(docRef, {
+                    multiWeekPlans,
+                    favorites,
+                    checkedGroceries,
+                    updatedAt: new Date().toISOString()
+                  }, { merge: true });
+                  setSyncStatus('Live Sync Active 🟢');
+                }
+              }, (err) => {
+                console.error(err);
+                setSyncStatus('Sync Error (Check Rules)');
+              });
+
+              // Store globally to enable save pushing
+              window.activeFirestorePush = (plans, favs, groc) => {
+                setDoc(docRef, {
+                  multiWeekPlans: plans,
+                  favorites: favs,
+                  checkedGroceries: groc,
+                  updatedAt: new Date().toISOString()
+                }, { merge: true }).catch(() => {});
+              };
+            }).catch(() => {
+              setSyncStatus('Auth Failed');
+            });
+          }
+        } catch (e) {
+          console.warn("Firebase parse warning:", e);
+        }
+
+        return () => unsubscribe();
+      }, [firebaseConfigInput]);
+
+      const triggerCloudSave = (plans, favs, groc) => {
+        if (typeof window.activeFirestorePush === 'function') {
+          window.activeFirestorePush(
+            plans || multiWeekPlans,
+            favs || favorites,
+            groc || checkedGroceries
+          );
+        }
+      };
+
+      const getMealById = (id) => {
+        if (!id) return null;
+        return favorites.find(m => m && m.id === id) || BBC_FOOD_SUGGESTIONS.find(m => m && m.id === id) || null;
+      };
+
+      const handleAssignMeal = (day, mealId, customTitle = '') => {
+        const targetPlan = multiWeekPlans[activeWeekKey] || createEmptyWeek();
+        const updatedPlanForWeek = {
+          ...targetPlan,
+          [day]: {
+            ...(targetPlan[day] || {}),
+            mealId: mealId,
+            customTitle: customTitle,
+          }
+        };
+        const updatedMulti = {
+          ...multiWeekPlans,
+          [activeWeekKey]: updatedPlanForWeek
+        };
+        setMultiWeekPlans(updatedMulti);
+        triggerCloudSave(updatedMulti, null, null);
+        setSelectedDayForModal(null);
+      };
+
+      const handleClearDay = (day) => {
+        const updatedPlanForWeek = {
+          ...currentWeeklyPlan,
+          [day]: {
+            ...(currentWeeklyPlan[day] || {}),
+            mealId: null,
+            customTitle: '',
+            notes: ''
+          }
+        };
+        const updatedMulti = {
+          ...multiWeekPlans,
+          [activeWeekKey]: updatedPlanForWeek
+        };
+        setMultiWeekPlans(updatedMulti);
+        triggerCloudSave(updatedMulti, null, null);
+      };
+
+      const handleClearWholeWeek = () => {
+        const updatedMulti = {
+          ...multiWeekPlans,
+          [activeWeekKey]: createEmptyWeek()
+        };
+        setMultiWeekPlans(updatedMulti);
+        triggerCloudSave(updatedMulti, null, null);
+      };
+
+      const handleUpdateDayNotes = (day, field, value) => {
+        const updatedPlanForWeek = {
+          ...currentWeeklyPlan,
+          [day]: {
+            ...(currentWeeklyPlan[day] || {}),
+            [field]: value
+          }
+        };
+        const updatedMulti = {
+          ...multiWeekPlans,
+          [activeWeekKey]: updatedPlanForWeek
+        };
+        setMultiWeekPlans(updatedMulti);
+        triggerCloudSave(updatedMulti, null, null);
+      };
+
+      const handleClearDay = (day) => {
+        const updatedPlanForWeek = {
+          ...currentWeeklyPlan,
+          [day]: {
+            ...(currentWeeklyPlan[day] || {}),
+            mealId: null,
+            customTitle: '',
+            notes: ''
+          }
+        };
+        setMultiWeekPlans({
+          ...multiWeekPlans,
+          [activeWeekKey]: updatedPlanForWeek
+        });
+      };
+
+      const handleClearWholeWeek = () => {
+        setMultiWeekPlans({
+          ...multiWeekPlans,
+          [activeWeekKey]: createEmptyWeek()
+        });
+      };
+
+      const handleUpdateDayNotes = (day, field, value) => {
+        const updatedPlanForWeek = {
+          ...currentWeeklyPlan,
+          [day]: {
+            ...(currentWeeklyPlan[day] || {}),
+            [field]: value
+          }
+        };
+        setMultiWeekPlans({
+          ...multiWeekPlans,
+          [activeWeekKey]: updatedPlanForWeek
+        });
+      };
+
+      const handleDragStart = (e, meal) => {
+        setDraggedMeal(meal);
+        e.dataTransfer.setData('text/plain', meal.id);
+      };
+
+      const handleDragOver = (e, day) => {
+        e.preventDefault();
+        if (dragOverDay !== day) setDragOverDay(day);
+      };
+
+      const handleDrop = (e, day) => {
+        e.preventDefault();
+        setDragOverDay(null);
+        if (draggedMeal) {
+          handleAssignMeal(day, draggedMeal.id);
+          setDraggedMeal(null);
+        }
+      };
+
+      const handleAddBbcToFavorites = (bbcRecipe) => {
+        if (!bbcRecipe || favorites.some(f => f.title === bbcRecipe.title)) return;
+        const converted = {
+          id: `fav-bbc-${Date.now()}`,
+          title: bbcRecipe.title,
+          description: bbcRecipe.matchReason,
+          protein: bbcRecipe.protein,
+          tags: [...(bbcRecipe.tags || []), 'BBC Discovery'],
+          prepTime: bbcRecipe.cookTime,
+          serves: '4',
+          ingredients: bbcRecipe.ingredients || [],
+          sides: 'Rice, seasonal vegetables, or crusty bread',
+          source: 'BBC Good Food'
+        };
+        const updated = [converted, ...favorites];
+        setFavorites(updated);
+        triggerCloudSave(null, updated, null);
+        setActiveTab('favorites');
+      };
+
+      const handleSmartPlan = () => {
+        const available = favorites.length > 0 ? [...favorites] : [...INITIAL_FAVORITES];
+        const shuffled = [...available].sort(() => 0.5 - Math.random());
+        const newPlan = { ...currentWeeklyPlan };
+
+        DAYS_OF_WEEK.forEach((day, index) => {
+          if (day === 'Sunday') {
+            const roast = available.find(f => f.tags && f.tags.includes('Sunday Roast')) || available[0];
+            newPlan[day] = { ...(newPlan[day] || {}), mealId: roast.id, customTitle: '' };
+            return;
+          }
+          if (day === 'Friday' || day === 'Saturday') {
+            const treat = available.find(f => f.tags && (f.tags.includes('BBQ/Grill') || f.tags.includes('Weekend Special') || f.tags.includes('Bistro'))) || shuffled[index % shuffled.length];
+            newPlan[day] = { ...(newPlan[day] || {}), mealId: treat.id, customTitle: '' };
+            return;
+          }
+          const picked = shuffled[index % shuffled.length];
+          newPlan[day] = { ...(newPlan[day] || {}), mealId: picked.id, customTitle: '' };
+        });
+
+        const updatedMulti = {
+          ...multiWeekPlans,
+          [activeWeekKey]: newPlan
+        };
+        setMultiWeekPlans(updatedMulti);
+        triggerCloudSave(updatedMulti, null, null);
+      };
+
+      const handleCreateNewMeal = (e) => {
+        e.preventDefault();
+        if (!newMeal.title.trim()) return;
+
+        const mealObject = {
+          id: `custom-${Date.now()}`,
+          title: newMeal.title.trim(),
+          description: newMeal.description.trim() || 'Family favorite recipe',
+          protein: newMeal.protein,
+          tags: newMeal.tags.split(',').map(t => t.trim()).filter(Boolean),
+          prepTime: newMeal.prepTime.trim() || '30 mins',
+          serves: newMeal.serves.trim() || '4',
+          ingredients: newMeal.ingredients.split('\n').map(i => i.trim()).filter(Boolean),
+          sides: newMeal.sides.trim() || 'Seasonal vegetables / salad',
+          source: 'Family Staple'
+        };
+
+        const updated = [mealObject, ...favorites];
+        setFavorites(updated);
+        triggerCloudSave(null, updated, null);
+        setNewMeal({
+          title: '',
+          protein: 'Chicken',
+          prepTime: '30 mins',
+          serves: '4',
+          tags: 'Quick, Family',
+          ingredients: '',
+          sides: '',
+          description: ''
+        });
+        setCustomMealFormOpen(false);
+      };
+
+      const toggleGroceryItem = (itemKey) => {
+        setCheckedGroceries(prev => {
+          const next = { ...prev, [itemKey]: !prev[itemKey] };
+          triggerCloudSave(null, null, next);
+          return next;
+        });
+      };
+
+      const handleCreateNewMeal = (e) => {
+        e.preventDefault();
+        if (!newMeal.title.trim()) return;
+
+        const mealObject = {
+          id: `custom-${Date.now()}`,
+          title: newMeal.title.trim(),
+          description: newMeal.description.trim() || 'Family favorite recipe',
+          protein: newMeal.protein,
+          tags: newMeal.tags.split(',').map(t => t.trim()).filter(Boolean),
+          prepTime: newMeal.prepTime.trim() || '30 mins',
+          serves: newMeal.serves.trim() || '4',
+          ingredients: newMeal.ingredients.split('\n').map(i => i.trim()).filter(Boolean),
+          sides: newMeal.sides.trim() || 'Seasonal vegetables / salad',
+          source: 'Family Staple'
+        };
+
+        setFavorites([mealObject, ...favorites]);
+        setNewMeal({
+          title: '',
+          protein: 'Chicken',
+          prepTime: '30 mins',
+          serves: '4',
+          tags: 'Quick, Family',
+          ingredients: '',
+          sides: '',
+          description: ''
+        });
+        setCustomMealFormOpen(false);
+      };
+
+      const toggleGroceryItem = (itemKey) => {
+        setCheckedGroceries(prev => ({
+          ...prev,
+          [itemKey]: !prev[itemKey]
+        }));
+      };
+
+      const aggregatedGroceries = useMemo(() => {
+        const categories = {
+          'Meat & Poultry': [],
+          'Fresh Produce & Herbs': [],
+          'Pantry, Sauces & Spices': [],
+          'Chilled & Dairy': [],
+          'Bakery & Carbs': [],
+          'Other': []
+        };
+
+        const activePlan = multiWeekPlans[activeWeekKey] || createEmptyWeek();
+
+        DAYS_OF_WEEK.forEach(day => {
+          const planDay = activePlan[day];
+          if (!planDay || !planDay.mealId) return;
+
+          const meal = getMealById(planDay.mealId);
+          if (!meal || !Array.isArray(meal.ingredients)) return;
+
+          const dayDateLabel = dayCalendarDates[day] || day;
+
+          meal.ingredients.forEach(rawItem => {
+            if (!rawItem) return;
+            const itemLower = rawItem.toLowerCase();
+            let cat = 'Other';
+
+            if (itemLower.includes('chicken') || itemLower.includes('pork') || itemLower.includes('beef') || itemLower.includes('steak') || itemLower.includes('sausage') || itemLower.includes('mince')) {
+              cat = 'Meat & Poultry';
+            } else if (itemLower.includes('onion') || itemLower.includes('garlic') || itemLower.includes('herb') || itemLower.includes('mint') || itemLower.includes('coriander') || itemLower.includes('basil') || itemLower.includes('salad') || itemLower.includes('carrot') || itemLower.includes('celery') || itemLower.includes('mushroom') || itemLower.includes('pepper') || itemLower.includes('broccoli') || itemLower.includes('cucumber') || itemLower.includes('lemon') || itemLower.includes('pea') || itemLower.includes('sweetcorn') || itemLower.includes('tomato')) {
+              cat = 'Fresh Produce & Herbs';
+            } else if (itemLower.includes('soy') || itemLower.includes('sauce') || itemLower.includes('passata') || itemLower.includes('vinegar') || itemLower.includes('honey') || itemLower.includes('stock') || itemLower.includes('mustard') || itemLower.includes('spice') || itemLower.includes('sugar') || itemLower.includes('oil')) {
+              cat = 'Pantry, Sauces & Spices';
+            } else if (itemLower.includes('parmesan') || itemLower.includes('egg') || itemLower.includes('butter') || itemLower.includes('yoghurt') || itemLower.includes('cream')) {
+              cat = 'Chilled & Dairy';
+            } else if (itemLower.includes('rice') || itemLower.includes('potato') || itemLower.includes('flatbread') || itemLower.includes('panko') || itemLower.includes('spaghetti') || itemLower.includes('pasta') || itemLower.includes('bread') || itemLower.includes('pastry')) {
+              cat = 'Bakery & Carbs';
+            }
+
+            const uniqueKey = `${activeWeekKey}-${rawItem.trim()} (for ${meal.title})`;
+            if (!categories[cat].some(entry => entry.raw === rawItem)) {
+              categories[cat].push({
+                id: uniqueKey,
+                raw: rawItem,
+                mealTitle: meal.title,
+                day: `${day} (${dayDateLabel})`
+              });
+            }
+          });
+        });
+
+        return categories;
+      }, [multiWeekPlans, activeWeekKey, dayCalendarDates, favorites]);
+
+      const filteredFavorites = useMemo(() => {
+        return favorites.filter(fav => {
+          if (!fav) return false;
+          const titleMatch = (fav.title || '').toLowerCase().includes(searchQuery.toLowerCase());
+          const ingMatch = Array.isArray(fav.ingredients) && fav.ingredients.some(i => i.toLowerCase().includes(searchQuery.toLowerCase()));
+          const tagMatch = Array.isArray(fav.tags) && fav.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+          const matchesSearch = titleMatch || ingMatch || tagMatch;
+          const matchesProtein = proteinFilter === 'All' || (fav.protein || '').toLowerCase().includes(proteinFilter.toLowerCase());
+          return matchesSearch && matchesProtein;
+        });
+      }, [favorites, searchQuery, proteinFilter]);
+
+      const drawerMeals = useMemo(() => {
+        const pool = drawerCategory === 'staples' ? favorites : BBC_FOOD_SUGGESTIONS;
+        return pool.filter(m => {
+          if (!m) return false;
+          const search = drawerSearch.toLowerCase();
+          return (m.title || '').toLowerCase().includes(search) || (m.protein || '').toLowerCase().includes(search);
+        });
+      }, [drawerCategory, favorites, drawerSearch]);
+
+      const plannedCount = useMemo(() => {
+        return DAYS_OF_WEEK.filter(day => Boolean(currentWeeklyPlan[day]?.mealId || currentWeeklyPlan[day]?.customTitle)).length;
+      }, [currentWeeklyPlan]);
+
+      const copyShoppingListText = () => {
+        let text = `🛒 Weekly Shopping List (${formattedWeekLabel})\n\n`;
+        Object.entries(aggregatedGroceries).forEach(([cat, items]) => {
+          if (items.length > 0) {
+            text += `== ${cat} ==\n`;
+            items.forEach(it => {
+              const mark = checkedGroceries[it.id] ? '[x]' : '[ ]';
+              text += `${mark} ${it.raw} (for ${it.mealTitle})\n`;
+            });
+            text += '\n';
+          }
+        });
+
+        if (navigator?.clipboard?.writeText) {
+          navigator.clipboard.writeText(text).then(() => {
+            setCopiedNotification(true);
+            setTimeout(() => setCopiedNotification(false), 2000);
+          });
+        }
+      };
+
+      return (
+        <div className="min-h-screen bg-stone-50 text-stone-800 flex flex-col font-sans">
+          {/* Header */}
+          <header className="bg-white border-b border-stone-200 sticky top-0 z-30 shadow-xs">
+            <div className="max-w-7xl mx-auto px-4 py-3 sm:py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center shadow-md">
+                    <Icon name="chefHat" className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-xl font-bold tracking-tight text-stone-900">The Family Table</h1>
+                      <span className="bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-0.5 rounded-full">
+                        Family App
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-500">Shared meal rotation & BBC Food discovery</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                <button
+                  onClick={() => setShowFirebaseModal(true)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                    syncStatus.includes('Active')
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                      : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
+                  }`}
+                  title="Configure Cloud Sync for 2 Phones"
+                >
+                  <Icon name="cloud" className="w-3.5 h-3.5 text-amber-600" />
+                  <span>{syncStatus}</span>
+                </button>
+
+                <button
+                  onClick={handleClearWholeWeek}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 transition shadow-xs"
+                >
+                  <Icon name="trash" className="w-3.5 h-3.5 text-stone-400" />
+                  <span>Clear Week</span>
+                </button>
+
+                <button
+                  onClick={handleSmartPlan}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 text-white hover:bg-stone-800 transition shadow-xs"
+                >
+                  <Icon name="shuffle" className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Auto-Fill Week</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="max-w-7xl mx-auto px-4 flex space-x-2 sm:space-x-4 border-t border-stone-100 overflow-x-auto scrollbar-none">
+              <button
+                onClick={() => setActiveTab('planner')}
+                className={`flex items-center gap-2 py-3 px-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'planner' ? 'border-amber-600 text-amber-900 font-semibold' : 'border-transparent text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                <Icon name="calendar" className="w-4 h-4 text-amber-600" />
+                <span>Weekly Planner</span>
+                <span className="text-xs bg-amber-100 text-amber-900 font-bold px-1.5 py-0.5 rounded-full">
+                  {plannedCount}/7
+                </span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('favorites')}
+                className={`flex items-center gap-2 py-3 px-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'favorites' ? 'border-amber-600 text-amber-900 font-semibold' : 'border-transparent text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                <Icon name="utensils" className="w-4 h-4 text-amber-600" />
+                <span>Family Staples ({favorites.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('bbc')}
+                className={`flex items-center gap-2 py-3 px-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'bbc' ? 'border-amber-600 text-amber-900 font-semibold' : 'border-transparent text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                <Icon name="sparkles" className="w-4 h-4 text-amber-600" />
+                <span>BBC Food Matches</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('groceries')}
+                className={`flex items-center gap-2 py-3 px-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'groceries' ? 'border-amber-600 text-amber-900 font-semibold' : 'border-transparent text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                <Icon name="cart" className="w-4 h-4 text-amber-600" />
+                <span>Grocery Checklist</span>
+              </button>
+            </div>
+          </header>
+
+          {/* Main Area */}
+          <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 pb-24 sm:pb-12">
+            
+            {/* WEEKLY PLANNER TAB */}
+            {activeTab === 'planner' && (
+              <div className="space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-stone-200 shadow-xs">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-stone-900">
+                      Weekly Dinner Board
+                    </h2>
+                    <p className="text-xs sm:text-sm text-stone-500">
+                      Drag meals from the side deck or tap to assign meals.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center bg-stone-100 rounded-lg p-1 border border-stone-200">
+                      <button
+                        onClick={() => setSelectedWeekOffset(prev => prev - 1)}
+                        className="p-1.5 hover:bg-white rounded-md text-stone-700 transition"
+                      >
+                        <Icon name="chevronLeft" className="w-4 h-4" />
+                      </button>
+                      <div className="px-3 text-xs font-semibold text-stone-800 flex items-center gap-1.5">
+                        <Icon name="calendar" className="w-3.5 h-3.5 text-amber-600" />
+                        <span>{formattedWeekLabel}</span>
+                      </div>
+                      <button
+                        onClick={() => setSelectedWeekOffset(prev => prev + 1)}
+                        className="p-1.5 hover:bg-white rounded-md text-stone-700 transition"
+                      >
+                        <Icon name="chevronRight" className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {selectedWeekOffset !== 0 && (
+                      <button
+                        onClick={() => setSelectedWeekOffset(0)}
+                        className="px-2.5 py-1 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200"
+                      >
+                        Today
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setIsDrawerOpen(!isDrawerOpen)}
+                      className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+                    >
+                      <Icon name={isDrawerOpen ? "panelClose" : "panelOpen"} className="w-3.5 h-3.5" />
+                      <span>{isDrawerOpen ? 'Hide Deck' : 'Open Deck'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col lg:flex-row items-start gap-5">
+                  <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {DAYS_OF_WEEK.map((day) => {
+                      const planDay = currentWeeklyPlan[day] || {};
+                      const meal = getMealById(planDay.mealId);
+                      const isWeekend = day === 'Saturday' || day === 'Sunday';
+                      const isHovered = dragOverDay === day;
+                      const isFilled = Boolean(meal || planDay.customTitle);
+
+                      return (
+                        <div 
+                          key={day}
+                          onDragOver={(e) => handleDragOver(e, day)}
+                          onDrop={(e) => handleDrop(e, day)}
+                          className={`flex flex-col rounded-xl border transition relative min-h-[220px] ${
+                            isHovered 
+                              ? 'border-amber-500 bg-amber-50/70 ring-2 ring-amber-400' 
+                              : isFilled
+                                ? isWeekend ? 'bg-gradient-to-b from-amber-50/40 to-white border-amber-200 shadow-xs' : 'bg-white border-stone-200 shadow-xs'
+                                : 'bg-white/70 border-dashed border-stone-300 hover:border-amber-300'
+                          }`}
+                        >
+                          <div className="p-3 border-b border-stone-100 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                                isWeekend ? 'bg-amber-100 text-amber-800' : 'bg-stone-100 text-stone-700'
+                              }`}>
+                                {day}
+                              </span>
+                              <span className="text-xs font-semibold text-stone-500">
+                                {dayCalendarDates[day]}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={planDay.cook || 'Husband'}
+                                onChange={(e) => handleUpdateDayNotes(day, 'cook', e.target.value)}
+                                className="text-[11px] bg-stone-100 border-none rounded-md px-1.5 py-1 text-stone-600 font-medium"
+                              >
+                                <option value="Husband">👨‍🍳 Husband</option>
+                                <option value="Wife">👩‍🍳 Wife</option>
+                                <option value="Together">👫 Together</option>
+                                <option value="Eating Out">🍕 Eating Out</option>
+                              </select>
+
+                              {isFilled && (
+                                <button
+                                  onClick={() => handleClearDay(day)}
+                                  className="text-stone-300 hover:text-red-500 p-1"
+                                >
+                                  <Icon name="close" className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="p-3.5 flex-1 flex flex-col justify-between">
+                            {isFilled ? (
+                              <div>
+                                <h3 className="font-bold text-stone-900 text-sm mb-1.5">
+                                  {planDay.customTitle || (meal && meal.title)}
+                                </h3>
+
+                                {meal && (
+                                  <>
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                      <span className="text-[10px] font-medium bg-stone-100 text-stone-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                        <Icon name="flame" className="w-3 h-3 text-amber-600" />
+                                        {meal.protein}
+                                      </span>
+                                      <span className="text-[10px] font-medium bg-stone-100 text-stone-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                        <Icon name="clock" className="w-3 h-3 text-stone-500" />
+                                        {meal.prepTime || meal.cookTime}
+                                      </span>
+                                    </div>
+                                    {meal.sides && (
+                                      <p className="text-[11px] text-stone-600 mb-2 bg-stone-50 p-2 rounded-lg border border-stone-100">
+                                        <span className="font-semibold text-stone-800">Sides:</span> {meal.sides}
+                                      </p>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            ) : (
+                              <div
+                                onClick={() => setSelectedDayForModal(day)}
+                                className="flex-1 flex flex-col items-center justify-center p-4 border border-dashed border-stone-200 rounded-lg text-center cursor-pointer hover:bg-amber-50/50 hover:border-amber-300 transition my-1"
+                              >
+                                <div className="w-8 h-8 rounded-full bg-stone-100 text-stone-400 flex items-center justify-center mb-1.5">
+                                  <Icon name="plus" className="w-4 h-4" />
+                                </div>
+                                <p className="text-xs font-semibold text-stone-600">Empty Slot</p>
+                                <p className="text-[11px] text-stone-400">Drop meal here or tap to pick</p>
+                              </div>
+                            )}
+
+                            <div className="space-y-1.5 mt-2 pt-2 border-t border-stone-100">
+                              {isFilled && (
+                                <input
+                                  type="text"
+                                  placeholder="Prep notes (e.g. defrost stock)..."
+                                  value={planDay.notes || ''}
+                                  onChange={(e) => handleUpdateDayNotes(day, 'notes', e.target.value)}
+                                  className="w-full text-[11px] px-2 py-1 bg-stone-50 rounded-md border border-stone-200 text-stone-700"
+                                />
+                              )}
+                              <button
+                                onClick={() => setSelectedDayForModal(day)}
+                                className="w-full text-[11px] font-semibold py-1 px-2 rounded-md border border-stone-200 bg-white text-stone-600 hover:bg-stone-50 transition flex items-center justify-center gap-1"
+                              >
+                                <Icon name="edit" className="w-3 h-3 text-stone-400" />
+                                <span>{isFilled ? 'Change Meal' : 'Choose Meal'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Drawer */}
+                  {isDrawerOpen && (
+                    <div className="w-full lg:w-80 bg-white border border-stone-200 rounded-xl p-4 shadow-xs sticky top-24 max-h-[82vh] flex flex-col">
+                      <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                        <div className="flex items-center gap-1.5">
+                          <Icon name="grip" className="w-4 h-4 text-stone-400" />
+                          <h3 className="font-bold text-xs uppercase tracking-wider text-stone-700">Recipe Deck</h3>
+                        </div>
+                        <span className="text-[11px] text-stone-400">Drag to any day</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1.5 my-2.5 bg-stone-100 p-1 rounded-lg">
+                        <button
+                          onClick={() => setDrawerCategory('staples')}
+                          className={`py-1 text-xs font-semibold rounded-md ${drawerCategory === 'staples' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-500'}`}
+                        >
+                          Staples ({favorites.length})
+                        </button>
+                        <button
+                          onClick={() => setDrawerCategory('bbc')}
+                          className={`py-1 text-xs font-semibold rounded-md ${drawerCategory === 'bbc' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-500'}`}
+                        >
+                          BBC Ideas ({BBC_FOOD_SUGGESTIONS.length})
+                        </button>
+                      </div>
+
+                      <div className="relative mb-2.5">
+                        <input
+                          type="text"
+                          placeholder="Quick filter..."
+                          value={drawerSearch}
+                          onChange={(e) => setDrawerSearch(e.target.value)}
+                          className="w-full px-2 py-1 text-xs bg-stone-50 rounded-md border border-stone-200"
+                        />
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                        {drawerMeals.map((meal) => (
+                          <div
+                            key={meal.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, meal)}
+                            className="p-2.5 rounded-lg border border-stone-200 bg-white hover:border-amber-400 cursor-grab active:cursor-grabbing transition group select-none"
+                          >
+                            <div className="flex items-start justify-between gap-1.5">
+                              <p className="font-semibold text-xs text-stone-900 leading-snug">
+                                {meal.title}
+                              </p>
+                              <Icon name="grip" className="w-3.5 h-3.5 text-stone-300" />
+                            </div>
+
+                            <div className="flex items-center gap-2 mt-1.5 text-[10px] text-stone-500">
+                              <span className="bg-stone-100 px-1.5 py-0.5 rounded text-stone-600">
+                                {meal.protein}
+                              </span>
+                              <span>{meal.prepTime || meal.cookTime}</span>
+                            </div>
+
+                            <div className="mt-2 pt-1.5 border-t border-stone-100 flex items-center justify-between">
+                              <span className="text-[10px] text-stone-400">Quick assign:</span>
+                              <select
+                                defaultValue=""
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleAssignMeal(e.target.value, meal.id);
+                                    e.target.value = "";
+                                  }
+                                }}
+                                className="text-[10px] bg-stone-50 border border-stone-200 rounded px-1.5 py-0.5 text-stone-600"
+                              >
+                                <option value="" disabled>Day...</option>
+                                {DAYS_OF_WEEK.map(d => (
+                                  <option key={d} value={d}>{d.slice(0, 3)} ({dayCalendarDates[d]})</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* FAMILY FAVORITES TAB */}
+            {activeTab === 'favorites' && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-stone-900">Your Regular Family Dinners</h2>
+                    <p className="text-xs sm:text-sm text-stone-500">Add any meal directly to a day in your planner.</p>
+                  </div>
+
+                  <button
+                    onClick={() => setCustomMealFormOpen(true)}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg text-xs sm:text-sm font-semibold hover:bg-amber-700 shadow-xs"
+                  >
+                    <Icon name="plus" className="w-4 h-4" />
+                    <span>Add Family Recipe</span>
+                  </button>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-3 bg-white p-3 rounded-xl border border-stone-200">
+                  <div className="relative flex-1 w-full">
+                    <input
+                      type="text"
+                      placeholder="Search meals or ingredients..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs sm:text-sm bg-stone-50 rounded-lg border border-stone-200"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+                    {['All', 'Chicken', 'Pork', 'Beef'].map(filter => (
+                      <button
+                        key={filter}
+                        onClick={() => setProteinFilter(filter)}
+                        className={`px-3 py-1 text-xs font-medium rounded-full ${
+                          proteinFilter === filter ? 'bg-amber-600 text-white' : 'bg-stone-100 text-stone-600'
+                        }`}
+                      >
+                        {filter}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {filteredFavorites.map(meal => (
+                    <div key={meal.id} className="bg-white rounded-xl border border-stone-200 p-5 shadow-xs flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <h3 className="font-bold text-stone-900 text-base">{meal.title}</h3>
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                            {meal.protein}
+                          </span>
+                        </div>
+                        <p className="text-xs text-stone-600 mb-3">{meal.description}</p>
+                        
+                        <div className="mb-3">
+                          <h4 className="text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">Ingredients:</h4>
+                          <ul className="text-xs text-stone-600 space-y-0.5 list-disc list-inside">
+                            {meal.ingredients.slice(0, 4).map((ing, idx) => (
+                              <li key={idx} className="truncate">{ing}</li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        {meal.sides && (
+                          <div className="text-xs bg-stone-50 p-2.5 rounded-lg border border-stone-100 text-stone-600">
+                            <span className="font-semibold text-stone-800">Sides:</span> {meal.sides}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-stone-100 flex items-center justify-between">
+                        <span className="text-[11px] text-stone-400">{meal.prepTime}</span>
+                        <button
+                          onClick={() => setMealToAssign(meal)}
+                          className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-xs font-semibold flex items-center gap-1"
+                        >
+                          <Icon name="calendar" className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Add to Planner</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* BBC RECOMMENDATIONS TAB */}
+            {activeTab === 'bbc' && (
+              <div className="space-y-6">
+                <div className="bg-stone-900 text-white p-5 rounded-2xl shadow-sm">
+                  <span className="inline-block px-2.5 py-0.5 rounded-full bg-red-600 text-white text-xs font-bold mb-2">
+                    BBC Food Curated
+                  </span>
+                  <h2 className="text-xl font-bold">New Recipes Based on What You Cook</h2>
+                  <p className="text-xs sm:text-sm text-stone-300 mt-1">
+                    Matched to your family's favorite flavors. Add directly to your planner or save permanently.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {BBC_FOOD_SUGGESTIONS.map(recipe => (
+                    <div key={recipe.id} className="bg-white rounded-xl border border-stone-200 p-5 shadow-xs flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div>
+                            <h3 className="font-bold text-stone-900 text-base">{recipe.title}</h3>
+                            <p className="text-xs text-stone-500 mt-0.5">{recipe.bbcChef} • {recipe.cookTime}</p>
+                          </div>
+                          <span className="text-xs px-2.5 py-1 rounded-full font-semibold bg-red-50 text-red-700 border border-red-200">
+                            {recipe.protein}
+                          </span>
+                        </div>
+
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 my-3">
+                          <p className="text-xs font-bold text-amber-900 mb-1">Why It Fits Your Family:</p>
+                          <p className="text-xs text-amber-800">{recipe.matchReason}</p>
+                        </div>
+
+                        <div className="mb-3">
+                          <h4 className="text-xs font-bold text-stone-700 uppercase mb-1.5">Ingredients:</h4>
+                          <div className="flex flex-wrap gap-1.5">
+                            {recipe.ingredients.map((ing, i) => (
+                              <span key={i} className="text-xs bg-stone-100 text-stone-700 px-2 py-0.5 rounded-md">
+                                {ing}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-stone-100 flex flex-col sm:flex-row items-center justify-between gap-2">
+                        <a
+                          href={recipe.bbcUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-stone-600 hover:text-stone-900 underline font-medium"
+                        >
+                          <span>Open BBC Recipe</span>
+                          <Icon name="link" className="w-3.5 h-3.5" />
+                        </a>
+
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <button
+                            onClick={() => setMealToAssign(recipe)}
+                            className="flex-1 sm:flex-none px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-1"
+                          >
+                            <Icon name="calendar" className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Add to Planner</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleAddBbcToFavorites(recipe)}
+                            className="flex-1 sm:flex-none px-3.5 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 flex items-center justify-center gap-1.5"
+                          >
+                            <Icon name="bookmark" className="w-3.5 h-3.5" />
+                            <span>Save to Staples</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* GROCERY CHECKLIST TAB */}
+            {activeTab === 'groceries' && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-stone-200 shadow-xs">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-stone-900 flex items-center gap-2">
+                      <Icon name="cart" className="w-5 h-5 text-amber-600" />
+                      <span>Interactive Supermarket Checklist</span>
+                    </h2>
+                    <p className="text-xs sm:text-sm text-stone-500">
+                      Aggregated from your planned meals for <span className="font-semibold text-stone-800">{formattedWeekLabel}</span>.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center bg-stone-100 rounded-lg p-1 border border-stone-200">
+                      <button
+                        onClick={() => setSelectedWeekOffset(prev => prev - 1)}
+                        className="p-1 hover:bg-white rounded text-stone-700"
+                      >
+                        <Icon name="chevronLeft" className="w-4 h-4" />
+                      </button>
+                      <div className="px-2.5 text-xs font-semibold text-stone-800">
+                        {formattedWeekLabel}
+                      </div>
+                      <button
+                        onClick={() => setSelectedWeekOffset(prev => prev + 1)}
+                        className="p-1 hover:bg-white rounded text-stone-700"
+                      >
+                        <Icon name="chevronRight" className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={copyShoppingListText}
+                      className="px-3 py-1.5 bg-stone-100 text-stone-700 rounded-lg text-xs font-semibold hover:bg-stone-200 flex items-center gap-1.5"
+                    >
+                      <Icon name="copy" className="w-3.5 h-3.5" />
+                      <span>{copiedNotification ? 'Copied!' : 'Copy List'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {Object.entries(aggregatedGroceries).map(([category, items]) => {
+                    if (!items || items.length === 0) return null;
+                    const checkedCount = items.filter(it => checkedGroceries[it.id]).length;
+
+                    return (
+                      <div key={category} className="bg-white rounded-xl border border-stone-200 p-4 shadow-xs">
+                        <div className="flex items-center justify-between pb-2 mb-3 border-b border-stone-100">
+                          <h3 className="font-bold text-stone-800 text-sm">{category}</h3>
+                          <span className="text-xs bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full font-medium">
+                            {checkedCount} / {items.length}
+                          </span>
+                        </div>
+
+                        <div className="space-y-2">
+                          {items.map(item => {
+                            const isChecked = Boolean(checkedGroceries[item.id]);
+                            return (
+                              <div
+                                key={item.id}
+                                onClick={() => toggleGroceryItem(item.id)}
+                                className={`flex items-start gap-3 p-2 rounded-lg cursor-pointer transition select-none ${
+                                  isChecked ? 'bg-stone-50 text-stone-400' : 'hover:bg-amber-50/50 text-stone-800'
+                                }`}
+                              >
+                                <div className={`w-5 h-5 rounded-md flex items-center justify-center mt-0.5 border ${
+                                  isChecked ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-stone-300 bg-white'
+                                }`}>
+                                  {isChecked && <Icon name="check" className="w-3.5 h-3.5" />}
+                                </div>
+                                <div className="flex-1 text-xs">
+                                  <span className={`font-medium ${isChecked ? 'line-through text-stone-400' : 'text-stone-800'}`}>
+                                    {item.raw}
+                                  </span>
+                                  <span className="block text-[10px] text-stone-400 mt-0.5">
+                                    For: {item.mealTitle} ({item.day})
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* Quick Assign Modal */}
+          {mealToAssign && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full p-4 space-y-3 shadow-2xl">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <h3 className="font-bold text-sm">Add to Planner: {mealToAssign.title}</h3>
+                  <button onClick={() => setMealToAssign(null)}>
+                    <Icon name="close" className="w-4 h-4 text-stone-500" />
+                  </button>
+                </div>
+                <p className="text-xs text-stone-500">Choose day for {formattedWeekLabel}:</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {DAYS_OF_WEEK.map(day => (
+                    <button
+                      key={day}
+                      onClick={() => {
+                        handleAssignMeal(day, mealToAssign.id);
+                        setMealToAssign(null);
+                        setActiveTab('planner');
+                      }}
+                      className="p-2.5 rounded-lg border border-stone-200 hover:border-amber-500 hover:bg-amber-50 flex items-center justify-between text-left"
+                    >
+                      <span className="font-bold text-xs">{day} ({dayCalendarDates[day]})</span>
+                      <span className="text-[10px] text-emerald-600 font-semibold">Assign</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Choose Meal Modal */}
+          {selectedDayForModal && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] p-4 flex flex-col shadow-2xl">
+                <div className="flex items-center justify-between pb-3 border-b">
+                  <h3 className="font-bold text-base">Select Meal for {selectedDayForModal}</h3>
+                  <button onClick={() => setSelectedDayForModal(null)}>
+                    <Icon name="close" className="w-4 h-4 text-stone-500" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-2 mt-3 pr-1">
+                  {favorites.map(fav => (
+                    <div
+                      key={fav.id}
+                      onClick={() => handleAssignMeal(selectedDayForModal, fav.id)}
+                      className="p-3 rounded-xl border border-stone-200 hover:border-amber-500 hover:bg-amber-50/50 cursor-pointer flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="font-bold text-xs text-stone-900">{fav.title}</p>
+                        <p className="text-[11px] text-stone-500">{fav.protein} • {fav.prepTime}</p>
+                      </div>
+                      <Icon name="chevronRight" className="w-4 h-4 text-stone-400" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Custom Recipe Modal */}
+          {customMealFormOpen && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-lg w-full p-4 shadow-2xl">
+                <div className="flex items-center justify-between pb-3 border-b mb-3">
+                  <h3 className="font-bold text-base">Add New Family Staple</h3>
+                  <button onClick={() => setCustomMealFormOpen(false)}>
+                    <Icon name="close" className="w-4 h-4 text-stone-500" />
+                  </button>
+                </div>
+                <form onSubmit={handleCreateNewMeal} className="space-y-3">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Meal Title (e.g. Mild Butter Chicken)"
+                    value={newMeal.title}
+                    onChange={(e) => setNewMeal({ ...newMeal, title: e.target.value })}
+                    className="w-full text-xs p-2 border rounded-lg"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={newMeal.protein}
+                      onChange={(e) => setNewMeal({ ...newMeal, protein: e.target.value })}
+                      className="text-xs p-2 border rounded-lg"
+                    >
+                      <option value="Chicken">Chicken</option>
+                      <option value="Pork">Pork</option>
+                      <option value="Beef">Beef</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Cook Time (e.g. 35 mins)"
+                      value={newMeal.prepTime}
+                      onChange={(e) => setNewMeal({ ...newMeal, prepTime: e.target.value })}
+                      className="text-xs p-2 border rounded-lg"
+                    />
+                  </div>
+                  <textarea
+                    rows={3}
+                    placeholder="Key Ingredients (one per line)"
+                    value={newMeal.ingredients}
+                    onChange={(e) => setNewMeal({ ...newMeal, ingredients: e.target.value })}
+                    className="w-full text-xs p-2 border rounded-lg"
+                  />
+                  <button
+                    type="submit"
+                    className="w-full py-2 bg-amber-600 text-white font-semibold text-xs rounded-lg hover:bg-amber-700"
+                  >
+                    Save to Family Staples
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Cloud Sync Setup Modal */}
+          {showFirebaseModal && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <div className="flex items-center gap-2">
+                    <Icon name="cloud" className="w-5 h-5 text-amber-600" />
+                    <h3 className="font-bold text-sm text-stone-900">Live Sync (Both Phones)</h3>
+                  </div>
+                  <button onClick={() => setShowFirebaseModal(false)}>
+                    <Icon name="close" className="w-4 h-4 text-stone-400" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-stone-600 leading-relaxed">
+                  To sync changes live between you and your wife, paste your free Firebase config JSON below:
+                </p>
+
+                <textarea
+                  rows={6}
+                  value={firebaseConfigInput}
+                  onChange={(e) => setFirebaseConfigInput(e.target.value)}
+                  placeholder={`{\n  "apiKey": "AIzaSy...",\n  "authDomain": "...",\n  "projectId": "..."\n}`}
+                  className="w-full text-xs font-mono p-2.5 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    onClick={() => {
+                      try {
+                        localStorage.setItem('family_firebase_config_raw', firebaseConfigInput);
+                        setShowFirebaseModal(false);
+                      } catch (e) {}
+                    }}
+                    className="w-full py-2 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition"
+                  >
+                    Save & Connect Cloud
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Bottom Bar */}
+          <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 px-4 py-2 flex items-center justify-around z-40 shadow-lg">
+            <button
+              onClick={() => setActiveTab('planner')}
+              className={`flex flex-col items-center gap-1 text-[11px] ${activeTab === 'planner' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
+            >
+              <Icon name="calendar" className="w-5 h-5" />
+              <span>Plan</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('favorites')}
+              className={`flex flex-col items-center gap-1 text-[11px] ${activeTab === 'favorites' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
+            >
+              <Icon name="utensils" className="w-5 h-5" />
+              <span>Staples</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('bbc')}
+              className={`flex flex-col items-center gap-1 text-[11px] ${activeTab === 'bbc' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
+            >
+              <Icon name="sparkles" className="w-5 h-5" />
+              <span>BBC</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('groceries')}
+              className={`flex flex-col items-center gap-1 text-[11px] ${activeTab === 'groceries' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
+            >
+              <Icon name="cart" className="w-5 h-5" />
+              <span>List</span>
+            </button>
+          </nav>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
