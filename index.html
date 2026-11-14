@@ -644,14 +644,22 @@
 
       // Dynamic Firebase Live Sync Connection
       useEffect(() => {
-        const raw = firebaseConfigInput.trim();
-        if (!raw || typeof firebase === 'undefined') return;
+        const raw = (firebaseConfigInput || '').trim();
+        if (!raw) {
+          setSyncStatus('Local Mode');
+          return;
+        }
+
+        if (typeof firebase === 'undefined') {
+          setSyncStatus('Firebase SDK Missing');
+          setFirebaseModalMsg('Firebase script failed to load. Check your internet connection.');
+          return;
+        }
 
         let parsedConfig = null;
         try {
-          // Robust parser: accepts raw JSON or "const firebaseConfig = { ... };"
+          // Parse clean JSON or raw JS object definitions
           if (raw.startsWith('{') && raw.endsWith('}')) {
-            // Standard JSON or relaxed JS object
             parsedConfig = (new Function(`return ${raw}`))();
           } else {
             const match = raw.match(/\{[\s\S]*\}/);
@@ -661,7 +669,7 @@
           }
         } catch (err) {
           setSyncStatus('Config Format Error');
-          setFirebaseModalMsg('Could not read config. Make sure the brackets { ... } are included.');
+          setFirebaseModalMsg('Could not parse configuration. Ensure opening { and closing } are present.');
           return;
         }
 
@@ -673,77 +681,78 @@
 
         let unsubscribe = () => {};
         try {
-          // Initialize Firebase app if not already initialized
           let app;
-          try {
-            app = firebase.app('family-app');
-          } catch (e) {
-            app = firebase.initializeApp(parsedConfig, 'family-app');
+          const appName = 'family-app-instance';
+          if (firebase.apps.some(a => a.name === appName)) {
+            app = firebase.app(appName);
+          } else {
+            app = firebase.initializeApp(parsedConfig, appName);
           }
 
-          const auth = app.auth();
           const db = app.firestore();
+          setSyncStatus('Connecting...');
 
-          setSyncStatus('Connecting Cloud...');
+          // Use standard top-level document path: family_meals/current
+          const docRef = db.collection('family_meals').doc('current');
 
-          // Connect anonymously or sign in
-          const connectFirestore = () => {
-            const docRef = db.collection('artifacts').doc(parsedConfig.projectId)
-              .collection('public').doc('data')
-              .collection('family_meals_data').doc('current');
-
-            unsubscribe = docRef.onSnapshot((snap) => {
-              if (snap.exists) {
-                const data = snap.data();
-                if (data.multiWeekPlans) setMultiWeekPlans(data.multiWeekPlans);
-                if (data.favorites) setFavorites(data.favorites);
-                if (data.checkedGroceries) setCheckedGroceries(data.checkedGroceries);
-                setSyncStatus('Live Sync Active 🟢');
-                setFirebaseModalMsg('Connected! Live sync is active.');
-              } else {
-                // Initialize first remote record
-                docRef.set({
-                  multiWeekPlans,
-                  favorites,
-                  checkedGroceries,
-                  updatedAt: new Date().toISOString()
-                }, { merge: true });
-                setSyncStatus('Live Sync Active 🟢');
-                setFirebaseModalMsg('Connected! Created shared cloud database.');
-              }
-            }, (error) => {
-              console.error("Firestore snapshot error:", error);
-              setSyncStatus('Permission Denied ⚠️');
-              setFirebaseModalMsg('Permission denied: In Firebase Console -> Firestore -> Rules, set "allow read, write: if true;"');
-            });
-
-            // Store push function globally
-            window.activeFirestorePush = (plans, favs, groc) => {
+          unsubscribe = docRef.onSnapshot((snap) => {
+            if (snap.exists) {
+              const data = snap.data();
+              if (data.multiWeekPlans) setMultiWeekPlans(data.multiWeekPlans);
+              if (data.favorites) setFavorites(data.favorites);
+              if (data.checkedGroceries) setCheckedGroceries(data.checkedGroceries);
+              setSyncStatus('Live Sync Active 🟢');
+              setFirebaseModalMsg('Connected! Live sync is active across devices.');
+            } else {
+              // Create root shared record on first connect
               docRef.set({
-                multiWeekPlans: plans,
-                favorites: favs,
-                checkedGroceries: groc,
+                multiWeekPlans,
+                favorites,
+                checkedGroceries,
                 updatedAt: new Date().toISOString()
-              }, { merge: true }).catch(err => console.error("Cloud push failed:", err));
-            };
+              }, { merge: true }).then(() => {
+                setSyncStatus('Live Sync Active 🟢');
+                setFirebaseModalMsg('Connected & created shared database!');
+              }).catch(err => {
+                console.error("Firestore initial write error:", err);
+                setSyncStatus('Rules Error ⚠️');
+                setFirebaseModalMsg(`Firestore write blocked: ${err.message}. Check Security Rules in Firebase.`);
+              });
+            }
+          }, (error) => {
+            console.error("Firestore listener error:", error);
+            if (error.code === 'permission-denied') {
+              setSyncStatus('Rules Error ⚠️');
+              setFirebaseModalMsg('Permission Denied: Your Firestore rules are blocking access. Go to Firebase Console -> Firestore Database -> Rules tab, change to: allow read, write: if true; and click Publish.');
+            } else {
+              setSyncStatus('Sync Error ⚠️');
+              setFirebaseModalMsg(`Firestore error (${error.code || 'unknown'}): ${error.message}`);
+            }
+          });
+
+          // Global write function
+          window.activeFirestorePush = (plans, favs, groc) => {
+            docRef.set({
+              multiWeekPlans: plans || multiWeekPlans,
+              favorites: favs || favorites,
+              checkedGroceries: groc !== undefined ? groc : checkedGroceries,
+              updatedAt: new Date().toISOString()
+            }, { merge: true }).catch(err => {
+              console.error("Cloud push failed:", err);
+              setFirebaseModalMsg(`Sync failed to push update: ${err.message}`);
+            });
           };
 
-          // Try signing in anonymously if auth is enabled, otherwise proceed directly
-          auth.signInAnonymously()
-            .then(() => connectFirestore())
-            .catch((authErr) => {
-              console.warn("Anonymous auth failed, trying direct Firestore:", authErr);
-              // Some setups don't have anonymous auth enabled; try Firestore directly
-              connectFirestore();
-            });
-
         } catch (e) {
-          console.error("Firebase setup error:", e);
-          setSyncStatus('Sync Error');
-          setFirebaseModalMsg(e.message || 'Firebase initialisation error');
+          console.error("Firebase setup exception:", e);
+          setSyncStatus('Config Error');
+          setFirebaseModalMsg(`Setup error: ${e.message}`);
         }
 
-        return () => unsubscribe();
+        return () => {
+          unsubscribe();
+          window.activeFirestorePush = null;
+        };
       }, [firebaseConfigInput]);
 
       const triggerCloudSave = (plans, favs, groc) => {
@@ -751,7 +760,7 @@
           window.activeFirestorePush(
             plans || multiWeekPlans,
             favs || favorites,
-            groc || checkedGroceries
+            groc !== undefined ? groc : checkedGroceries
           );
         }
       };
@@ -1050,12 +1059,25 @@
                     <p className="text-xs text-stone-500">Shared meal rotation & BBC Food discovery</p>
                   </div>
                 </div>
+
+                {/* Mobile Direct Cloud Sync Button in Top Header */}
+                <button
+                  onClick={() => setShowFirebaseModal(true)}
+                  className={`sm:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border shadow-xs transition active:scale-95 ${
+                    syncStatus.includes('Active')
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                      : 'bg-amber-50 text-amber-900 border-amber-300'
+                  }`}
+                >
+                  <Icon name="cloud" className="w-3.5 h-3.5 text-amber-600" />
+                  <span>{syncStatus.includes('Active') ? '🟢 Live' : '☁️ Setup Sync'}</span>
+                </button>
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
                 <button
                   onClick={() => setShowFirebaseModal(true)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                  className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
                     syncStatus.includes('Active')
                       ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                       : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
@@ -1068,7 +1090,7 @@
 
                 <button
                   onClick={handleClearWholeWeek}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 transition shadow-xs"
+                  className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 transition shadow-xs"
                 >
                   <Icon name="trash" className="w-3.5 h-3.5 text-stone-400" />
                   <span>Clear Week</span>
@@ -1076,7 +1098,7 @@
 
                 <button
                   onClick={handleSmartPlan}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 text-white hover:bg-stone-800 transition shadow-xs"
+                  className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 text-white hover:bg-stone-800 transition shadow-xs"
                 >
                   <Icon name="shuffle" className="w-3.5 h-3.5 text-amber-400" />
                   <span>Auto-Fill Week</span>
@@ -1797,24 +1819,41 @@
                 />
 
                 {firebaseModalMsg && (
-                  <div className={`p-2.5 rounded-lg text-xs ${
+                  <div className={`p-3 rounded-lg text-xs leading-relaxed border ${
                     firebaseModalMsg.includes('Connected')
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                      : 'bg-amber-50 text-amber-900 border border-amber-200'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-amber-50 text-amber-900 border-amber-300 font-medium'
                   }`}>
                     {firebaseModalMsg}
                   </div>
                 )}
+
+                <div className="bg-stone-50 p-2.5 rounded-lg border border-stone-200 text-[11px] text-stone-600 space-y-1">
+                  <p className="font-bold text-stone-800">If it says "Rules Error" or "Permission Denied":</p>
+                  <p>1. In Firebase Console, click <strong>Firestore Database</strong> → <strong>Rules</strong> tab.</p>
+                  <p>2. Change the code inside to:</p>
+                  <pre className="bg-white p-1 rounded border border-stone-200 text-[10px] text-stone-800 font-mono">
+{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`}
+                  </pre>
+                  <p>3. Click <strong>Publish</strong>.</p>
+                </div>
 
                 <div className="flex items-center justify-between pt-2">
                   <button
                     onClick={() => {
                       try {
                         localStorage.setItem('family_firebase_config_raw', firebaseConfigInput);
-                        setFirebaseModalMsg('Saving & checking connection...');
+                        setFirebaseModalMsg('Connecting...');
                       } catch (e) {}
                     }}
-                    className="w-full py-2 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition"
+                    className="w-full py-2.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition shadow-xs"
                   >
                     Save & Connect Cloud
                   </button>
@@ -1824,34 +1863,41 @@
           )}
 
           {/* Mobile Bottom Bar */}
-          <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 px-4 py-2 flex items-center justify-around z-40 shadow-lg">
+          <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 px-3 py-2 flex items-center justify-around z-40 shadow-lg">
             <button
               onClick={() => setActiveTab('planner')}
-              className={`flex flex-col items-center gap-1 text-[11px] ${activeTab === 'planner' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
+              className={`flex flex-col items-center gap-0.5 text-[11px] ${activeTab === 'planner' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
             >
               <Icon name="calendar" className="w-5 h-5" />
               <span>Plan</span>
             </button>
             <button
               onClick={() => setActiveTab('favorites')}
-              className={`flex flex-col items-center gap-1 text-[11px] ${activeTab === 'favorites' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
+              className={`flex flex-col items-center gap-0.5 text-[11px] ${activeTab === 'favorites' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
             >
               <Icon name="utensils" className="w-5 h-5" />
               <span>Staples</span>
             </button>
             <button
               onClick={() => setActiveTab('bbc')}
-              className={`flex flex-col items-center gap-1 text-[11px] ${activeTab === 'bbc' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
+              className={`flex flex-col items-center gap-0.5 text-[11px] ${activeTab === 'bbc' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
             >
               <Icon name="sparkles" className="w-5 h-5" />
               <span>BBC</span>
             </button>
             <button
               onClick={() => setActiveTab('groceries')}
-              className={`flex flex-col items-center gap-1 text-[11px] ${activeTab === 'groceries' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
+              className={`flex flex-col items-center gap-0.5 text-[11px] ${activeTab === 'groceries' ? 'text-amber-600 font-bold' : 'text-stone-400'}`}
             >
               <Icon name="cart" className="w-5 h-5" />
               <span>List</span>
+            </button>
+            <button
+              onClick={() => setShowFirebaseModal(true)}
+              className={`flex flex-col items-center gap-0.5 text-[11px] ${syncStatus.includes('Active') ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}`}
+            >
+              <Icon name="cloud" className="w-5 h-5" />
+              <span>{syncStatus.includes('Active') ? 'Synced' : 'Sync'}</span>
             </button>
           </nav>
         </div>
@@ -1861,7 +1907,8 @@
     try {
       const rootElement = document.getElementById('root');
       if (rootElement) {
-        ReactDOM.createRoot(rootElement).render(<App />);
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(<App />);
       }
     } catch (e) {
       console.error("Mount error:", e);
