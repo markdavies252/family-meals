@@ -11,27 +11,7 @@
   <!-- React & Babel for zero-build running in any browser -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- Firebase 11 Modular CDN SDKs -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-    window.FirebaseSDK = {
-      initializeApp,
-      getAuth,
-      signInAnonymously,
-      getFirestore,
-      doc,
-      setDoc,
-      onSnapshot
-    };
-  </script>
-
-  <!-- Lucide Icons standalone bundle -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js"></script>
 
   <style>
     /* Custom scrollbars */
@@ -42,10 +22,17 @@
   </style>
 </head>
 <body class="bg-stone-50 text-stone-800 antialiased selection:bg-amber-200">
-  <div id="root"></div>
+  <div id="root">
+    <div class="min-h-screen flex items-center justify-center">
+      <div class="text-center p-6 bg-white rounded-xl shadow-xs border border-stone-200">
+        <div class="w-8 h-8 border-3 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+        <p class="text-sm font-semibold text-stone-700">Loading The Family Table...</p>
+      </div>
+    </div>
+  </div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo, useRef } = React;
+    const { useState, useEffect, useMemo } = React;
 
     // --- Verified Inline SVG Icon Helper for Lucide Aesthetics ---
     const Icon = ({ name, className = "w-4 h-4", ...props }) => {
@@ -794,43 +781,6 @@
         triggerCloudSave(updatedMulti, null, null);
       };
 
-      const handleClearDay = (day) => {
-        const updatedPlanForWeek = {
-          ...currentWeeklyPlan,
-          [day]: {
-            ...(currentWeeklyPlan[day] || {}),
-            mealId: null,
-            customTitle: '',
-            notes: ''
-          }
-        };
-        setMultiWeekPlans({
-          ...multiWeekPlans,
-          [activeWeekKey]: updatedPlanForWeek
-        });
-      };
-
-      const handleClearWholeWeek = () => {
-        setMultiWeekPlans({
-          ...multiWeekPlans,
-          [activeWeekKey]: createEmptyWeek()
-        });
-      };
-
-      const handleUpdateDayNotes = (day, field, value) => {
-        const updatedPlanForWeek = {
-          ...currentWeeklyPlan,
-          [day]: {
-            ...(currentWeeklyPlan[day] || {}),
-            [field]: value
-          }
-        };
-        setMultiWeekPlans({
-          ...multiWeekPlans,
-          [activeWeekKey]: updatedPlanForWeek
-        });
-      };
-
       const handleDragStart = (e, meal) => {
         setDraggedMeal(meal);
         e.dataTransfer.setData('text/plain', meal.id);
@@ -937,44 +887,6 @@
           triggerCloudSave(null, null, next);
           return next;
         });
-      };
-
-      const handleCreateNewMeal = (e) => {
-        e.preventDefault();
-        if (!newMeal.title.trim()) return;
-
-        const mealObject = {
-          id: `custom-${Date.now()}`,
-          title: newMeal.title.trim(),
-          description: newMeal.description.trim() || 'Family favorite recipe',
-          protein: newMeal.protein,
-          tags: newMeal.tags.split(',').map(t => t.trim()).filter(Boolean),
-          prepTime: newMeal.prepTime.trim() || '30 mins',
-          serves: newMeal.serves.trim() || '4',
-          ingredients: newMeal.ingredients.split('\n').map(i => i.trim()).filter(Boolean),
-          sides: newMeal.sides.trim() || 'Seasonal vegetables / salad',
-          source: 'Family Staple'
-        };
-
-        setFavorites([mealObject, ...favorites]);
-        setNewMeal({
-          title: '',
-          protein: 'Chicken',
-          prepTime: '30 mins',
-          serves: '4',
-          tags: 'Quick, Family',
-          ingredients: '',
-          sides: '',
-          description: ''
-        });
-        setCustomMealFormOpen(false);
-      };
-
-      const toggleGroceryItem = (itemKey) => {
-        setCheckedGroceries(prev => ({
-          ...prev,
-          [itemKey]: !prev[itemKey]
-        }));
       };
 
       const aggregatedGroceries = useMemo(() => {
@@ -1891,7 +1803,14 @@
       );
     }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    try {
+      const rootElement = document.getElementById('root');
+      if (rootElement) {
+        ReactDOM.createRoot(rootElement).render(<App />);
+      }
+    } catch (e) {
+      console.error("Mount error:", e);
+    }
   </script>
 </body>
 </html>
